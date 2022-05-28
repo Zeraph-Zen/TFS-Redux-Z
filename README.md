@@ -2,6 +2,7 @@
 Place prop_dynamic_overrides, edit their appearance and properties, and build cool stuff!
 This is an further updated and improved version Bolt's version of KTM's TFS plugin.
 
+The SMLib version used for this plugin was made by Adrianilloo, and can be found here https://github.com/Adrianilloo/smlib/tree/transitional_syntax
 
 ## Features (so far):
 ```
