@@ -1,4 +1,14 @@
 /*
+	Team Fortress Sandbox Redux "Zen" (TFS Redux Z)
+	A forked and modified version of bolt's TFS Redux plugin.
+	This version was already modified prior to me getting it by Batfoxkid#7401 on Discord, 
+	adding buildzones and fixing the plugin as it appeared to be non functional when grabbed from the original github repo. 
+
+	The name change is a result of me wanting to differentiate between this and the original a bit more, but having no creativity in what to name it.
+
+
+	Below this is the original comment, made by bolt.
+
 	Team Fortress Sandbox Redux (TFS Redux)
 	Coded by bolt
 
@@ -8,6 +18,7 @@
 	- Xeon: Owner of Neogenesis Network. Although he didn't help me in this project, he's helped me in the past with my development adventures. This guy is awesome.
 	- The {SuN} Community and Staff: For being part of the best gaming community I've ever been in. ALL of you are awesome!
 */
+
 #include <sourcemod>
 #include <sdktools>
 #include <smlib>
@@ -16,7 +27,7 @@
 #include <tf2_stocks>
 #include <adminmenu>
 
-#define PLUGIN_VERSION "0.2"
+#define PLUGIN_VERSION "Zen 0.3"
 
 //Defines for sounds
 #define SOUND_SPAWN "buttons/lightswitch2.wav"
@@ -44,6 +55,7 @@ enum PropMenu {
 	itemct
 }
 
+/* The original plugin info, it felt wrong to delete it despite the dead link so here it is kept as a mere comment
 public Plugin:myinfo = 
 {
 	name = "TFS Redux",
@@ -52,8 +64,21 @@ public Plugin:myinfo =
 	version = PLUGIN_VERSION,
 	url = "https://bolts.dev/"
 }
+*/
+
+public Plugin:myinfo = 
+{
+	name = "TFS Redux",
+	author = "Zeraph",
+	description = "A modified version of bolt's TFS Redux plugin",
+	version = PLUGIN_VERSION,
+	url = "https://github.com/Zeraph-Zen/TFS-Redux-Z"
+}
+
+/* Exists twice? Keeping as a comment for testing
 //Defines for sounds
 #define SOUND_SPAWN "buttons/lightswitch2.wav"
+*/
 
 // Prop menus
 new Handle:g_PropMenus = INVALID_HANDLE;
@@ -61,6 +86,12 @@ new Handle:g_PropMenus = INVALID_HANDLE;
 //prop states
 new g_iOwner[4096];
 new bool:g_bKillProp[4096];
+
+new g_bInBuildZone[4096];
+/*
+	g_bInBuildZone appears to be an array with a length of 4096 containing 1s and 0s which is what it uses as a true or false to check if you're in a build area
+	But if that's the case, why isn't it using booleans? 
+*/
 new g_iPropCount[MAXPLAYERS+1];
 new g_iLastProp[MAXPLAYERS+1];
 new g_iSelectedProp[MAXPLAYERS+1];
@@ -82,10 +113,13 @@ new g_HaloSprite;
 new Handle:prop_limit;
 
 public OnPluginStart() {
+	//Creates the commands and sets some settings
 	RegConsoleCmd("sm_tfs", Command_TFSMenu, "Open the TFS Menu", FCVAR_PLUGIN);
 	RegAdminCmd("sm_tfs_admin", Command_TFSAdmin, ADMFLAG_GENERIC);
 
 	prop_limit = CreateConVar("sm_tfs_proplimit", "50", "Prop Limit for each user.", FCVAR_PLUGIN|FCVAR_NOTIFY);
+
+	HookEvent("player_death", OnPlayerSpawn, EventHookMode_Post);
 
 	new String:hc[PLATFORM_MAX_PATH];
 	BuildPath(Path_SM, hc, sizeof(hc), "configs/TFS/proplist.cfg");
@@ -95,6 +129,8 @@ public OnPluginStart() {
 }
 
 public OnMapStart() {
+	//Repeated from above? Uncertain if it's needed, due to a lack of knowledge in this language
+	//Keeping untouched for now
 	new String:hc[PLATFORM_MAX_PATH];
 	BuildPath(Path_SM, hc, sizeof(hc), "configs/TFS/proplist.cfg");
 	ParseConfigFile(hc);
@@ -103,12 +139,78 @@ public OnMapStart() {
 	g_HaloSprite = PrecacheModel("materials/sprites/halo01.vmt");
 	g_iBeamIndex = PrecacheModel("materials/sprites/purplelaser1.vmt");
 
+	//Self explanitory, adds the sounds defined earlier to the cache
 	PrecacheSound(SOUND_SPAWN);
 	PrecacheSound(SOUND_DELETE);
 	PrecacheSound(SOUND_MANIPSAVE);
 	PrecacheSound(SOUND_MANIPDISCARD);
 	PrecacheSound(SOUND_PAINT);
 	PrecacheSound(SOUND_EDIT);
+	
+	int entity = -1;
+	while((entity=FindEntityByClassname(entity, "func_flagdetectionzone")) != -1) //Yeah, I genuinely don't know what this is, all I know is that this is a confusing language
+	{
+		SDKHook(entity, SDKHook_StartTouch, OnBuildZoneEnter);
+		SDKHook(entity, SDKHook_Touch, OnBuildZoneTouch);
+		SDKHook(entity, SDKHook_EndTouch, OnBuildZoneExit);
+	}
+}
+
+public void OnPlayerSpawn(Event event, const char[] naame, bool dontBroadcast)
+{
+	g_bInBuildZone[GetClientOfUserId(event.GetInt("userid"))] = 0;
+}
+
+public void OnEntityCreated(int entity, const char[] classname) {
+	g_bInBuildZone[entity] = 0;
+
+	if(StrEqual(classname, "func_flagdetectionzone")) { //This is what decides that any func_flagdetectionzone triggers are to be the "build areas" of the map
+		SDKHook(entity, SDKHook_StartTouch, OnBuildZoneEnter); //Hooks the entities
+		SDKHook(entity, SDKHook_Touch, OnBuildZoneTouch);
+		SDKHook(entity, SDKHook_EndTouch, OnBuildZoneExit);
+	}
+}
+
+public void OnBuildZoneEnter(int entity, int client) {
+	if(client > 0 && client < sizeof(g_bInBuildZone)) {
+		g_bInBuildZone[client]++;
+	}
+}
+
+public void OnBuildZoneTouch(int entity, int client) {
+	if(client > 0 && client < sizeof(g_bInBuildZone) && !g_bInBuildZone[client]) {
+		g_bInBuildZone[client] = 1;
+	}
+}
+
+public void OnBuildZoneExit(int entity, int client) {
+	if(client > 0 && client < sizeof(g_bInBuildZone)) {
+		if(--g_bInBuildZone[client] < 0) {
+			g_bInBuildZone[client] = 0;
+		}
+	}
+}
+
+public void OnPluginEnd() {
+	for(new i=1; i<sizeof(g_iOwner); i++) {
+		if(g_iOwner[i]) {
+			DeleteProp(i);
+		}
+	}
+}
+
+public void OnClientDisconnect(int client)
+{
+	g_bInBuildZone[client] = 0;
+	/* Uncertain if props get deleted on client disconnect, so I'll leave this commented out for now
+	for(new i=1; i<sizeof(g_iOwner); i++) {
+		if(g_iOwner[i] == client) {
+			DeleteProp(i);
+		}
+	}
+	if(IsValidEntity(client)) {
+		EmitSoundToClient(client, SOUND_DELETE, _, _, _, _, _, 50);
+	}*/
 }
 
 bool:ParseConfigFile(const String:file[]) {
@@ -186,34 +288,35 @@ public SMCResult:Config_EndSection(Handle:parser) {
 }
 
 public Config_End(Handle:parser, bool:halted, bool:failed) {
-	if (failed)
+	if (failed) {
 		SetFailState("Plugin configuration error");
+	}
 }
 
 public Action:Command_TFSMenu(client, args) {
-	TFS_ShowMainMenu(client);
-	return Plugin_Handled;
+	TFS_ShowMainMenu(client); {
+		return Plugin_Handled;
+	}
 }
 
 TFS_ShowMainMenu(client)
-{
+{	//Items are added to the list, ordered as function to which the identifying string is passed, a string identifying the item lastly followed by the actual text shown in menu
 	new Handle:menu = CreateMenu(TFS_MainMenuHandler);
 	SetMenuExitBackButton(menu, false);
-	SetMenuTitle(menu, "TFS Redux V0.2 ALPHA\n ");
+	SetMenuTitle(menu, "TFS Redux Zen V0.3\n"); //Sets the title of the menu to the current version of the plugin, strangely not using the variable defined early on so it'll probably be changed to do that later
 	AddMenuItem(menu, "props", "Prop Spawner");
 	AddMenuItem(menu, "manip", "Manipulate Menu");
 	AddMenuItem(menu, "edit", "Edit Menu");
 	AddMenuItem(menu, "delete", "Delete Prop");
 	AddMenuItem(menu, "clearall", "Clear All Props");
-	if (CheckCommandAccess(client, "sm_tfs_admin", ADMFLAG_GENERIC))
+	if (CheckCommandAccess(client, "sm_tfs_admin", ADMFLAG_GENERIC)) //Checks if you have admin permissions, if so it adds a button for the admin menu
 	{
 		AddMenuItem(menu, "admin", "Admin Menu");
 	}
 	DisplayMenu(menu, client, 30);
 }
 
-public TFS_MainMenuHandler(Handle:menu, MenuAction:action, param1, param2) 
-{
+public TFS_MainMenuHandler(Handle:menu, MenuAction:action, param1, param2) { //param1 is the client, param2 though? I don't know
 	if (action == MenuAction_End) 
 	{
 		CloseHandle(menu);
@@ -251,7 +354,7 @@ public TFS_MainMenuHandler(Handle:menu, MenuAction:action, param1, param2)
 
 TFS_ShowPropMenu(client) {
 	new Handle:menu = CreateMenu(TFS_PropMenuHandler);
-	SetMenuTitle(menu, "TFS Redux - Prop Spawn Menu (Your Count: %i)", g_iPropCount[client]);
+	SetMenuTitle(menu, "TFS Redux Zen - Prop Spawn Menu (Your Count: %i)", g_iPropCount[client]);
 	new msize = GetArraySize(g_PropMenus);
 	new hmenu[PropMenu];
 	new String:menuid[10];
@@ -274,46 +377,46 @@ public TFS_PropMenuHandler(Handle:menu, MenuAction:action, param1, param2) {
 		new msize = GetArraySize(g_PropMenus);
 		// Menu from config file
 		if (param2 <= msize) {
-				new hmenu[PropMenu];
-				GetArrayArray(g_PropMenus, param2, hmenu[0]);
-				new String:mtitle[512];
-				Format(mtitle, sizeof(mtitle), "%s\n ", hmenu[title]);
-				if (hmenu[type] == PropMenuType_Text) {
-					new Handle:cpanel = CreatePanel();
-					SetPanelTitle(cpanel, mtitle);
-					new String:text[128];
-					new String:junk[128];
-					for (new i = 0; i < hmenu[itemct]; ++i) {
-						ReadPackString(hmenu[items], junk, sizeof(junk));
-						ReadPackString(hmenu[items], text, sizeof(text));
-						DrawPanelText(cpanel, text);
-					}
-					for (new j = 0; j < 7; ++j)
-					DrawPanelItem(cpanel, " ", ITEMDRAW_NOTEXT);
-					DrawPanelText(cpanel, " ");
-					DrawPanelItem(cpanel, "Back", ITEMDRAW_CONTROL);
-					DrawPanelItem(cpanel, " ", ITEMDRAW_NOTEXT);
-					DrawPanelText(cpanel, " ");
-					DrawPanelItem(cpanel, "Exit", ITEMDRAW_CONTROL);
-					ResetPack(hmenu[items]);
-					SendPanelToClient(cpanel, param1, TFS_MenuHandler, 30);
-					CloseHandle(cpanel);
-				} else {
-					new Handle:cmenu = CreateMenu(TFS_CustomMenuHandler);
-					SetMenuExitBackButton(cmenu, true);
-					SetMenuTitle(cmenu, mtitle);
-					new String:cmd[128];
-					new String:desc[128];
-					for (new i = 0; i < hmenu[itemct]; ++i) {
-						ReadPackString(hmenu[items], cmd, sizeof(cmd));
-						ReadPackString(hmenu[items], desc, sizeof(desc));
-						new drawstyle = ITEMDRAW_DEFAULT;
-						if (strlen(cmd) == 0)
-							drawstyle = ITEMDRAW_DISABLED;
-						AddMenuItem(cmenu, cmd, desc, drawstyle);
-					}
-					ResetPack(hmenu[items]);
-					DisplayMenu(cmenu, param1, 30);
+			new hmenu[PropMenu];
+			GetArrayArray(g_PropMenus, param2, hmenu[0]);
+			new String:mtitle[512];
+			Format(mtitle, sizeof(mtitle), "%s\n ", hmenu[title]);
+			if (hmenu[type] == PropMenuType_Text) {
+				new Handle:cpanel = CreatePanel();
+				SetPanelTitle(cpanel, mtitle);
+				new String:text[128];
+				new String:junk[128];
+				for (new i = 0; i < hmenu[itemct]; ++i) {
+					ReadPackString(hmenu[items], junk, sizeof(junk));
+					ReadPackString(hmenu[items], text, sizeof(text));
+					DrawPanelText(cpanel, text);
+				}
+				for (new j = 0; j < 7; ++j)
+				DrawPanelItem(cpanel, " ", ITEMDRAW_NOTEXT);
+				DrawPanelText(cpanel, " ");
+				DrawPanelItem(cpanel, "Back", ITEMDRAW_CONTROL);
+				DrawPanelItem(cpanel, " ", ITEMDRAW_NOTEXT);
+				DrawPanelText(cpanel, " ");
+				DrawPanelItem(cpanel, "Exit", ITEMDRAW_CONTROL);
+				ResetPack(hmenu[items]);
+				SendPanelToClient(cpanel, param1, TFS_MenuHandler, 30);
+				CloseHandle(cpanel);
+			} else {
+				new Handle:cmenu = CreateMenu(TFS_CustomMenuHandler);
+				SetMenuExitBackButton(cmenu, true);
+				SetMenuTitle(cmenu, mtitle);
+				new String:cmd[128];
+				new String:desc[128];
+				for (new i = 0; i < hmenu[itemct]; ++i) {
+					ReadPackString(hmenu[items], cmd, sizeof(cmd));
+					ReadPackString(hmenu[items], desc, sizeof(desc));
+					new drawstyle = ITEMDRAW_DEFAULT;
+					if (strlen(cmd) == 0)
+						drawstyle = ITEMDRAW_DISABLED;
+					AddMenuItem(cmenu, cmd, desc, drawstyle);
+				}
+				ResetPack(hmenu[items]);
+				DisplayMenu(cmenu, param1, 30);
 			}
 		}
 	}
@@ -339,6 +442,12 @@ public TFS_CustomMenuHandler(Handle:menu, MenuAction:action, param1, param2) {
 		GetMenuItem(menu, param2, itemval, sizeof(itemval));
 		if (strlen(itemval) > 0)
 		{
+			if(!g_bInBuildZone[param1])
+			{
+				PrintToChat(param1, "You can't build here! Move into a building area!");
+				TFS_ShowPropMenu(param1);
+				return;
+			}
 			new prop_limit_ = GetConVarInt(prop_limit);
 			if((g_iPropCount[param1] >= prop_limit_))
 			{
@@ -361,6 +470,13 @@ public TFS_CustomMenuHandler(Handle:menu, MenuAction:action, param1, param2) {
 			GetClientAbsAngles(param1, AbsAngles);
 				
 			GetCollisionPoint(param1, pos);
+			
+			/*if(!CanPropBeHere(pos))
+			{
+				PrintToChat(param1, "You can't build here! Move into a building area!");
+				TFS_ShowMainMenu(param1);
+				return;
+			}*/
 				
 			PropOrigin[0] = pos[0];
 			PropOrigin[1] = pos[1];
@@ -372,15 +488,18 @@ public TFS_CustomMenuHandler(Handle:menu, MenuAction:action, param1, param2) {
 				
 			//Spawn ent:
 			ent = CreateEntityByName("prop_dynamic_override");
-			TeleportEntity(ent, PropOrigin, AbsAngles, NULL_VECTOR);
 			DispatchKeyValue(ent, "model", itemval);
 			DispatchKeyValue(ent, "solid","6");
 			DispatchSpawn(ent);
 			SetEntityRenderMode(ent, RENDER_TRANSALPHA);
 			ActivateEntity(ent);
+			TeleportEntity(ent, PropOrigin, AbsAngles, NULL_VECTOR);
+			
 			g_iOwner[ent] = param1;
 			g_iPropCount[param1]++;
 			g_iLastProp[param1] = ent;
+			
+			RequestFrame(CheckEntity1, ent);
 				
 			//Send BeamRingPoint:
 			GetEntPropVector(ent, Prop_Data, "m_vecOrigin", Origin);
@@ -405,6 +524,17 @@ public TFS_CustomMenuHandler(Handle:menu, MenuAction:action, param1, param2) {
 	}
 }
 
+public void CheckEntity1(int entity)
+{
+	RequestFrame(CheckEntity2, entity);
+}
+
+public void CheckEntity2(int entity)
+{
+	//if(IsValidEntity(entity) && !g_bInBuildZone[entity])
+	//	DeleteProp(entity);
+}
+
 stock GetCollisionPoint(client, Float:pos[3])
 {
 	decl Float:vOrigin[3], Float:vAngles[3];
@@ -412,7 +542,7 @@ stock GetCollisionPoint(client, Float:pos[3])
 	GetClientEyePosition(client, vOrigin);
 	GetClientEyeAngles(client, vAngles);
 	
-	new Handle:trace = TR_TraceRayFilterEx(vOrigin, vAngles, MASK_SOLID, RayType_Infinite, TraceEntityFilterPlayer);
+	new Handle:trace = TR_TraceRayFilterEx(vOrigin, vAngles, MASK_ALL, RayType_Infinite, TraceEntityFilterPlayer);
 	
 	if(TR_DidHit(trace))
 	{
@@ -425,7 +555,23 @@ stock GetCollisionPoint(client, Float:pos[3])
 
 public bool:TraceEntityFilterPlayer(entity, contentsMask)
 {
-	return entity > MaxClients;
+	if (entity <= MaxClients) {
+		return false;
+	}
+	if (contentsMask & MASK_SOLID) {
+		return true;
+	}
+	
+	static char classname[32];
+	if (GetEntityClassname(entity, classname, sizeof(classname))) {
+
+		PrintToConsoleAll(classname);
+		if(StrEqual(classname, "func_nobuild")) {
+			return true;
+		}
+	}
+	
+	return false;
 }
 
 ///////////////////
@@ -436,60 +582,71 @@ public bool:TraceEntityFilterPlayer(entity, contentsMask)
 TFS_ManipMenu(client)
 {
 	new target = GetClientAimTarget(client, false);
-	if(CanModifyProp(client, target))
-	{
-		//menu chunk
-		g_iSelectedProp[client] = target;
-		GetEntPropVector(g_iSelectedProp[client], Prop_Data, "m_angRotation", g_vecSelectedPropPrevAng[client]);
-		GetEntPropVector(g_iSelectedProp[client], Prop_Data, "m_vecOrigin", g_vecSelectedPropPrevPos[client]);
-		GetClientEyeAngles(client, g_vecLockedAng[client]);
-		SDKHook(client, SDKHook_PreThink, PropManip);
-		SetEntityMoveType(client, MOVETYPE_NONE);
-		
-		//prevents unable to re-grab prop after grab. 
-		SetEntProp(target, Prop_Send, "m_nSolidType", 6);
-		
-		//draw menu
-		new Handle:menu = CreateMenu(Menu_Manip);
-		SetMenuTitle(menu, "WASD Moves The Prop | Jump or Duck moves Up or Down | Alt-Fire Rotates");
-		
-		AddMenuItem(menu, "1", "Save Your Changes");
-		AddMenuItem(menu, "2", "Discard Your Changes");
-		
-		SetMenuExitButton(menu, false);
-		DisplayMenu(menu, client, 720);
+	if(!g_bInBuildZone[client]) {
+		PrintToChat(client, "You are outside of a building area, so may not manipulate this prop!");
+		TFS_ShowMainMenu(client);
+		return;
+	} else {
+		if(CanModifyProp(client, target)) {
+			//menu chunk
+			g_iSelectedProp[client] = target;
+			GetEntPropVector(g_iSelectedProp[client], Prop_Data, "m_angRotation", g_vecSelectedPropPrevAng[client]);
+			GetEntPropVector(g_iSelectedProp[client], Prop_Data, "m_vecOrigin", g_vecSelectedPropPrevPos[client]);
+			GetClientEyeAngles(client, g_vecLockedAng[client]);
+			SDKHook(client, SDKHook_PreThink, PropManip);
+			SetEntityMoveType(client, MOVETYPE_NONE);
+
+			//prevents unable to re-grab prop after grab. 
+			SetEntProp(target, Prop_Send, "m_nSolidType", 6);
+
+			//draw menu
+			new Handle:menu = CreateMenu(Menu_Manip);
+			SetMenuTitle(menu, "WASD Moves The Prop | Jump or Duck moves Up or Down | Alt-Fire Rotates");
+
+			AddMenuItem(menu, "1", "Save Your Changes");
+			AddMenuItem(menu, "2", "Discard Your Changes");
+
+			SetMenuExitButton(menu, false);
+			DisplayMenu(menu, client, 720);
+		}
 	}
 }
 
 //Manipulate Menu options
-public Menu_Manip(Handle:menu, MenuAction:action, client, option)
-{
-	if(action == MenuAction_Select)
-	{
-		for (new i=1; i <= MaxClients; i++)
-			if (IsClientInGame(i) && IsPlayerAlive(i))
-				if (IsStuckInEnt(i, g_iSelectedProp[client]))
-				{
+public Menu_Manip(Handle:menu, MenuAction:action, client, option) {
+	if(action == MenuAction_Select) {//This is the user selection, not entirely sure how it works but hey
+		for (new i=1; i <= MaxClients; i++) { //For loop that increments the value of i
+			if (IsClientInGame(i) && IsPlayerAlive(i)) { //If the client with a value of i is fully connected and alive
+				if (IsStuckInEnt(i, g_iSelectedProp[client])) { //Check if client i is stuck in the selected prop of the current client (That's you!)
 					PrintToChat(client, "\x01You cannot move props onto \x04Players!");
 					TeleportEntity(g_iSelectedProp[client], g_vecSelectedPropPrevPos[client], g_vecSelectedPropPrevAng[client], NULL_VECTOR);
 					break;
 				}
-		SDKUnhook(client, SDKHook_PreThink, PropManip);
+			}/*
+			if (!g_bInBuildZone[g_iSelectedProp[client]]) { //I believe this only checks if users are in build areas
+				PrintToChat(client, "The prop cannot be moved outside of build areas!");
+				TeleportEntity(g_iSelectedProp[client], g_vecSelectedPropPrevPos[client], g_vecSelectedPropPrevAng[client], NULL_VECTOR);
+				break;
+			}*/
+		}
+		SDKUnhook(client, SDKHook_PreThink, PropManip); //Returns controls to the players after manipulating a prop
 		SetEntityMoveType(client, MOVETYPE_WALK);
 		EmitSoundToClient(client, SOUND_MANIPSAVE, _, _, _, _, _, 50);
 		TFS_ShowMainMenu(client);
-		
-		if(option == 1)
-		TeleportEntity(g_iSelectedProp[client], g_vecSelectedPropPrevPos[client], g_vecSelectedPropPrevAng[client], NULL_VECTOR);
-		EmitSoundToClient(client, SOUND_MANIPDISCARD, _, _, _, _, _, 50);
+
+		if(option == 1) {//Discard changes
+			TeleportEntity(g_iSelectedProp[client], g_vecSelectedPropPrevPos[client], g_vecSelectedPropPrevAng[client], NULL_VECTOR);
+			EmitSoundToClient(client, SOUND_MANIPDISCARD, _, _, _, _, _, 50);
+		}
 	}
-	else if(action == MenuAction_Cancel)
-		TFS_ShowMainMenu(client);
-	else if(action == MenuAction_End)
+	else if(action == MenuAction_Cancel) {
+		TFS_ShowMainMenu(client);} 
+	else if(action == MenuAction_End) {
 		CloseHandle(menu);
+	}
 }
 
-//Manipulate Funcitonality
+//Manipulate prop controls
 public PropManip(client)
 {
 	decl Float:pos[3], Float:ang[3], Float:pAng[3], Float:pPos[3];
@@ -551,9 +708,35 @@ public PropManip(client)
 	}
 	
 	//apply modifications
-	TeleportEntity(g_iSelectedProp[client], pPos, pAng, NULL_VECTOR);	
+	//if(CanPropBeHere(pPos))
+	TeleportEntity(g_iSelectedProp[client], pPos, pAng, NULL_VECTOR);
 }
 
+//Looks like earlier attempts at specifying buildzones by Batfoxkid, I'll keep em around for now
+
+/*stock bool CanPropBeHere(const float pos[3])
+{
+        static const float maxs[3] = { 50.0, 50.0, 50.0 };
+        static const float mins[3] = { -50.0, -50.0, 0.0 };
+	TR_TraceHullFilterEx(pos, pos, mins, maxs, MASK_ALL, CanThisPropBeHere);
+	if(TR_DidHit())
+		return true;
+	
+	return false;
+}
+
+public bool CanThisPropBeHere(int entity, int contentsMask)
+{
+	static char classname[32];
+	if(GetEntityClassname(entity, classname, sizeof(classname)))
+	{
+		PrintToConsoleAll(classname);
+		if(StrEqual(classname, "func_flagdetectionzone"))
+			return true;
+	}
+	
+	return false;
+}*/
 
 /////////////
 /*Edit Menu*/
@@ -1222,8 +1405,7 @@ ClearAllProps(client)
 {
 	for(new i=1; i<sizeof(g_iOwner); i++)
 	{
-		if(g_iOwner[i] != client)
-			continue;
+		if(g_iOwner[i] == client)
 		DeleteProp(i);
 	}
 	if(IsValidEntity(client))
@@ -1234,8 +1416,8 @@ ClearAllProps(client)
 /*Paint Menu*/
 //////////////
 
-ShowMenu_Color(client)
-{
+ShowMenu_Color(client) {
+
 	new Handle:menu = CreateMenu(Menu_Color);
 	SetMenuTitle(menu, "TFS Redux - Paint Menu");
 	
@@ -1258,8 +1440,8 @@ ShowMenu_Color(client)
 	SetMenuExitButton(menu, true);
 	DisplayMenu(menu, client, 720);
 }
-public Menu_Color(Handle:menu, MenuAction:action, client, option)
-{	
+public Menu_Color(Handle:menu, MenuAction:action, client, option) {
+
 	if(action == MenuAction_Select)
 	{
 		new target = GetClientAimTarget(client, false);
@@ -1443,7 +1625,7 @@ public int AdminFCP(Menu menu, MenuAction action, int client, int param2)
 	return 0;
 }
 
-ShowMenu_AdminResetPC(client)
+ShowMenu_AdminResetPC(client) //Y'know, reading the function name at first gave me a different impression
 {
 	new Handle:menu = CreateMenu(AdminResetPC);
 	SetMenuTitle(menu, "TFS Redux - Select a player to reset their propcount!");
