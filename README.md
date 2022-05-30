@@ -14,6 +14,7 @@ The SMLib version used for this plugin was made by Adrianilloo, and can be found
 - TFS Admin Menu
 - Player collision check after prop manipulation. This stops propblocking.
 - Build zones! Players can only build and manipulate props while in these zones!
+- Ability to check who owns the prop you're looking at.
 ```
 
 ## Commands and ConVars
@@ -36,5 +37,6 @@ The SMLib version used for this plugin was made by Adrianilloo, and can be found
 - Improved build zone functions (Disable placing things outside of buildzones)
 - Another config file for setting things such as sounds, manipulation beam textures, etc
 - More cvars, such as one to toggle the plugin, and to toggle build zones.
+- A command to clear all of a specific users props.
 - Further improvements to propblock preventions
 ```

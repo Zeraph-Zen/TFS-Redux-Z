@@ -27,7 +27,7 @@
 #include <tf2_stocks>
 #include <adminmenu>
 
-#define PLUGIN_VERSION "Zen 0.3"
+#define PLUGIN_VERSION "Zen 0.4"
 
 //Defines for sounds
 #define SOUND_SPAWN "buttons/lightswitch2.wav"
@@ -46,6 +46,14 @@ enum PropMenuType {
 	PropMenuType_List,
 	PropMenuType_Text
 }
+
+/*enum struct PropMenu {
+	char name[32];
+	char title[128];
+	PropMenuType type;
+	Handle items;
+	int itemct
+}*/
 
 enum PropMenu {
 	String:name[32],
@@ -75,7 +83,7 @@ public Plugin:myinfo =
 	url = "https://github.com/Zeraph-Zen/TFS-Redux-Z"
 }
 
-/* Exists twice? Keeping as a comment for testing
+/*Exists twice? Keeping as a comment for testing
 //Defines for sounds
 #define SOUND_SPAWN "buttons/lightswitch2.wav"
 */
@@ -116,6 +124,7 @@ public OnPluginStart() {
 	//Creates the commands and sets some settings
 	RegConsoleCmd("sm_tfs", Command_TFSMenu, "Open the TFS Menu", FCVAR_PLUGIN);
 	RegAdminCmd("sm_tfs_admin", Command_TFSAdmin, ADMFLAG_GENERIC);
+	//RegAdminCmd("sm_tfs_clearuser", Command_TFSClear, ADMFLAG_GENERIC);
 
 	prop_limit = CreateConVar("sm_tfs_proplimit", "50", "Prop Limit for each user.", FCVAR_PLUGIN|FCVAR_NOTIFY);
 
@@ -241,13 +250,14 @@ bool:ParseConfigFile(const String:file[]) {
 public SMCResult:Config_NewSection(Handle:parser, const String:section[], bool:quotes) {
 	g_configLevel++;
 	if (g_configLevel == 1) {
-		new hmenu[PropMenu];
-		strcopy(hmenu[name], sizeof(hmenu[name]), section);
-		hmenu[items] = CreateDataPack();
-		hmenu[itemct] = 0;
-		if (g_PropMenus == INVALID_HANDLE)
-			g_PropMenus = CreateArray(sizeof(hmenu));
-		PushArrayArray(g_PropMenus, hmenu[0]);
+	new hmenu[PropMenu];
+	strcopy(hmenu[name], sizeof(hmenu[name]), section);
+	hmenu[items] = CreateDataPack();
+	hmenu[itemct] = 0;
+	if (g_PropMenus == INVALID_HANDLE) {
+		g_PropMenus = CreateArray(sizeof(hmenu));
+	}
+	PushArrayArray(g_PropMenus, hmenu[0]);
 	}
 	return SMCParse_Continue;
 }
@@ -303,10 +313,11 @@ TFS_ShowMainMenu(client)
 {	//Items are added to the list, ordered as function to which the identifying string is passed, a string identifying the item lastly followed by the actual text shown in menu
 	new Handle:menu = CreateMenu(TFS_MainMenuHandler);
 	SetMenuExitBackButton(menu, false);
-	SetMenuTitle(menu, "TFS Redux Zen V0.3\n"); //Sets the title of the menu to the current version of the plugin, strangely not using the variable defined early on so it'll probably be changed to do that later
+	SetMenuTitle(menu, "TFS Redux Zen V0.4\n"); //Sets the title of the menu to the current version of the plugin, strangely not using the variable defined early on so it'll probably be changed to do that later
 	AddMenuItem(menu, "props", "Prop Spawner");
 	AddMenuItem(menu, "manip", "Manipulate Menu");
 	AddMenuItem(menu, "edit", "Edit Menu");
+	AddMenuItem(menu, "whoowns", "Check Prop Ownership");
 	AddMenuItem(menu, "delete", "Delete Prop");
 	AddMenuItem(menu, "clearall", "Clear All Props");
 	if (CheckCommandAccess(client, "sm_tfs_admin", ADMFLAG_GENERIC)) //Checks if you have admin permissions, if so it adds a button for the admin menu
@@ -316,8 +327,10 @@ TFS_ShowMainMenu(client)
 	DisplayMenu(menu, client, 30);
 }
 
-public TFS_MainMenuHandler(Handle:menu, MenuAction:action, param1, param2) { //param1 is the client, param2 though? I don't know
-	if (action == MenuAction_End) 
+public TFS_MainMenuHandler(Handle:menu, MenuAction:action, client, param2) { 
+//"client" used to be "param1", replacing it has aided greatly in readability.
+//param2 is an integer used in other functions to determine a "position" value, but a position of what exactly?.
+	if (action == MenuAction_End)
 	{
 		CloseHandle(menu);
 	} 
@@ -327,27 +340,31 @@ public TFS_MainMenuHandler(Handle:menu, MenuAction:action, param1, param2) { //p
 		GetMenuItem(menu, param2, item, sizeof(item));
 		if (StrEqual(item, "props"))
 		{
-			TFS_ShowPropMenu(param1);
+			TFS_ShowPropMenu(client);
 		}
 		else if (StrEqual(item, "manip"))
 		{
-			TFS_ManipMenu(param1);
+			TFS_ManipMenu(client);
 		}
 		else if (StrEqual(item, "edit"))
 		{
-			ShowMenu_Edit(param1);
+			ShowMenu_Edit(client);
+		}
+		else if (StrEqual(item, "whoowns"))
+		{
+			WhoOwns(client);
 		}
 		else if (StrEqual(item, "delete"))
 		{
-			DeleteAimProp(param1);
+			DeleteAimProp(client);
 		}
 		else if (StrEqual(item, "clearall"))
 		{
-			ShowMenu_Clear(param1);
+			ShowMenu_Clear(client);
 		}
 		else if (StrEqual(item, "admin"))
 		{
-			TFS_ShowAdminMenu(param1);
+			TFS_ShowAdminMenu(client);
 		}
 	}
 }
@@ -367,11 +384,11 @@ TFS_ShowPropMenu(client) {
 	DisplayMenu(menu, client, 30);
 }
 
-public TFS_PropMenuHandler(Handle:menu, MenuAction:action, param1, param2) {
+public TFS_PropMenuHandler(Handle:menu, MenuAction:action, client, param2) {
 	if (action == MenuAction_End) {
 		CloseHandle(menu); }
 	else if(action == MenuAction_Cancel) {
-		TFS_ShowMainMenu(param1); }
+		TFS_ShowMainMenu(client); }
 	else if (action == MenuAction_Select) {
 		new String:buf[64];
 		new msize = GetArraySize(g_PropMenus);
@@ -399,7 +416,7 @@ public TFS_PropMenuHandler(Handle:menu, MenuAction:action, param1, param2) {
 				DrawPanelText(cpanel, " ");
 				DrawPanelItem(cpanel, "Exit", ITEMDRAW_CONTROL);
 				ResetPack(hmenu[items]);
-				SendPanelToClient(cpanel, param1, TFS_MenuHandler, 30);
+				SendPanelToClient(cpanel, client, TFS_MenuHandler, 30);
 				CloseHandle(cpanel);
 			} else {
 				new Handle:cmenu = CreateMenu(TFS_CustomMenuHandler);
@@ -416,25 +433,26 @@ public TFS_PropMenuHandler(Handle:menu, MenuAction:action, param1, param2) {
 					AddMenuItem(cmenu, cmd, desc, drawstyle);
 				}
 				ResetPack(hmenu[items]);
-				DisplayMenu(cmenu, param1, 30);
+				DisplayMenu(cmenu, client, 30);
 			}
 		}
 	}
 }
 
 
-public TFS_MenuHandler(Handle:menu, MenuAction:action, param1, param2) {
+public TFS_MenuHandler(Handle:menu, MenuAction:action, client, param2) {
 	if (action == MenuAction_End) {
 		CloseHandle(menu);
 	} else if (menu == INVALID_HANDLE && action == MenuAction_Select && param2 == 8) {
-		TFS_ShowPropMenu(param1);
+		TFS_ShowPropMenu(client);
 	} else if (action == MenuAction_Cancel) {
-		if (param2 == MenuCancel_ExitBack)
-			TFS_ShowPropMenu(param1);
+		if (param2 == MenuCancel_ExitBack) {
+			TFS_ShowPropMenu(client);
+		}
 	}
 }
 
-public TFS_CustomMenuHandler(Handle:menu, MenuAction:action, param1, param2) {
+public TFS_CustomMenuHandler(Handle:menu, MenuAction:action, client, param2) {
 	if (action == MenuAction_End) {
 		CloseHandle(menu);
 	} else if (action == MenuAction_Select) {
@@ -442,39 +460,39 @@ public TFS_CustomMenuHandler(Handle:menu, MenuAction:action, param1, param2) {
 		GetMenuItem(menu, param2, itemval, sizeof(itemval));
 		if (strlen(itemval) > 0)
 		{
-			if(!g_bInBuildZone[param1])
+			if(!g_bInBuildZone[client])
 			{
-				PrintToChat(param1, "You can't build here! Move into a building area!");
-				TFS_ShowPropMenu(param1);
+				PrintToChat(client, "You can't build here! Move into a building area!");
+				TFS_ShowPropMenu(client);
 				return;
 			}
 			new prop_limit_ = GetConVarInt(prop_limit);
-			if((g_iPropCount[param1] >= prop_limit_))
+			if((g_iPropCount[client] >= prop_limit_))
 			{
-				PrintToChat(param1, "You can't spawn any more props. Delete some to spawn more!");
-				TFS_ShowMainMenu(param1);
+				PrintToChat(client, "You can't spawn any more props. Delete some to spawn more!");
+				TFS_ShowMainMenu(client);
 				return;
 			}
-			if(g_bIsClientSpec(param1) == 1)
+			if(g_bIsClientSpec(client) == 1)
 			{
-				PrintToChat(param1, "You cannot build in Spectator! Please join either RED or BLU!");
-				TFS_ShowMainMenu(param1);
+				PrintToChat(client, "You cannot build in Spectator! Please join either RED or BLU!");
+				TFS_ShowMainMenu(client);
 				return;
 			}
 //			PrintToChatAll(itemval)
 			decl ent;
 			new Float:AbsAngles[3], Float:ClientOrigin[3], Float:Origin[3], Float:pos[3], Float:beampos[3], Float:PropOrigin[3], Float:EyeAngles[3];
 						
-			GetClientAbsOrigin(param1, ClientOrigin);
-			GetClientEyeAngles(param1, EyeAngles);
-			GetClientAbsAngles(param1, AbsAngles);
+			GetClientAbsOrigin(client, ClientOrigin);
+			GetClientEyeAngles(client, EyeAngles);
+			GetClientAbsAngles(client, AbsAngles);
 				
-			GetCollisionPoint(param1, pos);
+			GetCollisionPoint(client, pos);
 			
 			/*if(!CanPropBeHere(pos))
 			{
-				PrintToChat(param1, "You can't build here! Move into a building area!");
-				TFS_ShowMainMenu(param1);
+				PrintToChat(client, "You can't build here! Move into a building area!");
+				TFS_ShowMainMenu(client);
 				return;
 			}*/
 				
@@ -495,9 +513,9 @@ public TFS_CustomMenuHandler(Handle:menu, MenuAction:action, param1, param2) {
 			ActivateEntity(ent);
 			TeleportEntity(ent, PropOrigin, AbsAngles, NULL_VECTOR);
 			
-			g_iOwner[ent] = param1;
-			g_iPropCount[param1]++;
-			g_iLastProp[param1] = ent;
+			g_iOwner[ent] = client;
+			g_iPropCount[client]++;
+			g_iLastProp[client] = ent;
 			
 			RequestFrame(CheckEntity1, ent);
 				
@@ -505,22 +523,23 @@ public TFS_CustomMenuHandler(Handle:menu, MenuAction:action, param1, param2) {
 			GetEntPropVector(ent, Prop_Data, "m_vecOrigin", Origin);
 			TE_SetupBeamRingPoint(PropOrigin, 10.0, 150.0, g_BeamSprite, g_HaloSprite, 0, 10, 0.6, 10.0, 0.5, {236, 150, 55, 200}, 20, 0);
 			TE_SendToAll();
-			EmitSoundToClient(param1, SOUND_SPAWN, _, _, _, _, _, 50);
+			EmitSoundToClient(client, SOUND_SPAWN, _, _, _, _, _, 50);
 
 			//anti-stuck protection
 			for (new i=1; i <= MaxClients; i++)
 				if (IsClientInGame(i) && IsPlayerAlive(i))
 					if (IsStuckInEnt(i, ent))
 					{
-						PrintToChat(param1, "\x01You cannot build on \x04Players!");
+						PrintToChat(client, "\x01You cannot build on \x04Players!");
 						DeleteProp(ent);
 						break;
 					}
-			TFS_ShowPropMenu(param1);
+			TFS_ShowPropMenu(client);
 		}
 	} else if (action == MenuAction_Cancel) {
-		if (param2 == MenuCancel_ExitBack)
-			TFS_ShowPropMenu(param1);
+		if (param2 == MenuCancel_ExitBack) {
+			TFS_ShowPropMenu(client);
+		}
 	}
 }
 
@@ -622,7 +641,7 @@ public Menu_Manip(Handle:menu, MenuAction:action, client, option) {
 					TeleportEntity(g_iSelectedProp[client], g_vecSelectedPropPrevPos[client], g_vecSelectedPropPrevAng[client], NULL_VECTOR);
 					break;
 				}
-			}/*
+			}/* Attempt to stop the prop being placed outside of build zones, but this method deoesn't work
 			if (!g_bInBuildZone[g_iSelectedProp[client]]) { //I believe this only checks if users are in build areas
 				PrintToChat(client, "The prop cannot be moved outside of build areas!");
 				TeleportEntity(g_iSelectedProp[client], g_vecSelectedPropPrevPos[client], g_vecSelectedPropPrevAng[client], NULL_VECTOR);
@@ -1263,6 +1282,21 @@ public Menu_zRotate(Handle:menu, MenuAction:action, client, option)
 		CloseHandle(menu);
 }
 
+//////////////////
+/*Who Owns This?*/
+//////////////////
+
+public WhoOwns(client) {
+	new prop = GetClientAimTarget(client, false); //Prop variable is set to the client
+	if (!(prop <= 0)) {
+		new owner = g_iOwner[prop];
+		PrintToChat(client, "Prop is owned by: %N", owner);
+		TFS_ShowMainMenu(client);
+	} else {
+		PrintToChat(client, "Invalid target!");
+		TFS_ShowMainMenu(client);
+	}
+}
 
 ///////////////////
 /*Gameplay Basics*/
@@ -1403,13 +1437,13 @@ public Menu_Clear(Handle:menu, MenuAction:action, client, option)
 //prop clearer
 ClearAllProps(client)
 {
-	for(new i=1; i<sizeof(g_iOwner); i++)
-	{
+	for(new i=1; i<sizeof(g_iOwner); i++) {
 		if(g_iOwner[i] == client)
 		DeleteProp(i);
 	}
-	if(IsValidEntity(client))
+	if(IsValidEntity(client)) {
 		EmitSoundToClient(client, SOUND_DELETE, _, _, _, _, _, 50);
+	}
 }
 
 //////////////
@@ -1496,8 +1530,7 @@ public Menu_Color(Handle:menu, MenuAction:action, client, option) {
 /*Admin Menus*/
 ///////////////
 
-public Action:Command_TFSAdmin(client, args) 
-{
+public Action:Command_TFSAdmin(client, args) {
 	TFS_ShowAdminMenu(client);
 	return Plugin_Handled;
 }
@@ -1715,6 +1748,36 @@ TakeOwnership(client)
 		PrintToChat(client, "Took Ownership of this Prop!")
 	}
 }
+
+
+/*
+public Action:Command_TFSClear(user, targetUser) { //Doesn't work, clears *all* props rather than just a users props. Commenting out.
+	
+	if (targetUser == 0) {
+		if (user != 0) {
+			PrintToChat(user, "Invalid Target!");
+		} else {
+			PrintToConsole(user, "Invalid Target!");
+		}
+		return Plugin_Stop;
+	}
+
+	new x = 0;
+	for(new i=1; i<sizeof(g_iOwner); i++) {
+		if(g_iOwner[i] == targetUser) {
+		DeleteProp(i);
+		x++;
+		}
+	}
+
+	if (user != 0) {
+		PrintToChat(user, "Cleared %i props from target.", x);
+	} else {
+		PrintToConsole(user, "Cleared %i props from target.", x);
+	}
+	return Plugin_Handled;
+}
+*/
 
 /*
 ForceClearProps(client, args)
