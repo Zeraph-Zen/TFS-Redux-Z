@@ -21,22 +21,20 @@ The SMLib version used for this plugin was made by Adrianilloo, and can be found
 ```
 - sm_tfs: Opens up the main menu
 - sm_tfs_admin: Quickly brings up the Admin menu (also shown in sm_tfs if have access to this cmd)
-+ sm_tfs_proplimit (def. 50): Proplimit for each user
+- sm_tfs_proplimit (def. 50): Proplimit for each user
 ```
 
 ## CREDITS:
 - KTM: He developed the original TFS Plugin that was used for the {SuN} and {SuN} Revived servers.
-- Bolt: Created the TFS-Redux plugin this is based on.
+- Bolt: Created the TFS Redux plugin this is based on.
 - Batfoxkid#7401: Fixed up the plugin a bit and created a functional build zone system.
 
 ## To do:
 ```
 - Add more props to proplist.cfg (event props, weapon mdls, hat mdls, etc)
 - Personal player settings (manipulate beam color, POSSIBLE different entity types such as prop_physics, etc)
-- Dead/Spec Player Checks
 - Improved build zone functions (Disable placing things outside of buildzones)
 - Another config file for setting things such as sounds, manipulation beam textures, etc
 - More cvars, such as one to toggle the plugin, and to toggle build zones.
 - A command to clear all of a specific users props.
-- Further improvements to propblock preventions
 ```
