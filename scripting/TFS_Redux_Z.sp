@@ -27,7 +27,7 @@
 #include <tf2_stocks>
 #include <adminmenu>
 
-#define PLUGIN_VERSION "Zen 0.4"
+#define PLUGIN_VERSION "Zen 0.5"
 
 //Defines for sounds
 #define SOUND_SPAWN "buttons/lightswitch2.wav"
@@ -74,8 +74,7 @@ public Plugin:myinfo =
 }
 */
 
-public Plugin:myinfo = 
-{
+public Plugin:myinfo = {
 	name = "TFS Redux",
 	author = "Zeraph",
 	description = "A modified version of bolt's TFS Redux plugin",
@@ -171,7 +170,9 @@ public void OnPlayerSpawn(Event event, const char[] naame, bool dontBroadcast)
 }
 
 public void OnEntityCreated(int entity, const char[] classname) {
-	g_bInBuildZone[entity] = 0;
+	if (entity>=-4096 && entity<=4096) {
+	g_bInBuildZone[entity] = 0; //I'm not entirely certain why this is needed, but commenting out this gives a segmentation fault so... I guess don't do that?
+	}
 
 	if(StrEqual(classname, "func_flagdetectionzone")) { //This is what decides that any func_flagdetectionzone triggers are to be the "build areas" of the map
 		SDKHook(entity, SDKHook_StartTouch, OnBuildZoneEnter); //Hooks the entities
@@ -268,13 +269,15 @@ public SMCResult:Config_KeyValue(Handle:parser, const String:key[], const String
 	GetArrayArray(g_PropMenus, msize-1, hmenu[0]);
 	switch (g_configLevel) {
 		case 1: {
-			if(strcmp(key, "title", false) == 0)
+			if(strcmp(key, "title", false) == 0){
 				strcopy(hmenu[title], sizeof(hmenu[title]), value);
+			}
 			if(strcmp(key, "type", false) == 0) {
-				if(strcmp(value, "text", false) == 0)
+				if(strcmp(value, "text", false) == 0) {
 					hmenu[type] = PropMenuType_Text;
-				else
+				} else {
 					hmenu[type] = PropMenuType_List;
+				}
 			}
 		}
 		case 2: {
@@ -311,59 +314,54 @@ public Action:Command_TFSMenu(client, args) {
 
 TFS_ShowMainMenu(client)
 {	//Items are added to the list, ordered as function to which the identifying string is passed, a string identifying the item lastly followed by the actual text shown in menu
-	new Handle:menu = CreateMenu(TFS_MainMenuHandler);
-	SetMenuExitBackButton(menu, false);
-	SetMenuTitle(menu, "TFS Redux Zen V0.4\n"); //Sets the title of the menu to the current version of the plugin, strangely not using the variable defined early on so it'll probably be changed to do that later
-	AddMenuItem(menu, "props", "Prop Spawner");
-	AddMenuItem(menu, "manip", "Manipulate Menu");
-	AddMenuItem(menu, "edit", "Edit Menu");
-	AddMenuItem(menu, "whoowns", "Check Prop Ownership");
-	AddMenuItem(menu, "delete", "Delete Prop");
-	AddMenuItem(menu, "clearall", "Clear All Props");
-	if (CheckCommandAccess(client, "sm_tfs_admin", ADMFLAG_GENERIC)) //Checks if you have admin permissions, if so it adds a button for the admin menu
-	{
-		AddMenuItem(menu, "admin", "Admin Menu");
+	if (TF2_GetClientTeam(client) == TFTeam_Red || TF2_GetClientTeam(client) == TFTeam_Blue) {//This stops you from using the menu if you're spectating or unassigned
+		new Handle:menu = CreateMenu(TFS_MainMenuHandler);
+		SetMenuExitBackButton(menu, false);
+		SetMenuTitle(menu, "TFS Redux Zen V0.5\n"); //Sets the title of the menu to the current version of the plugin, strangely not using the variable defined early on so it'll probably be changed to do that later
+		AddMenuItem(menu, "props", "Prop Spawner");
+		AddMenuItem(menu, "manip", "Manipulate Menu");
+		AddMenuItem(menu, "edit", "Edit Menu");
+		AddMenuItem(menu, "whoowns", "Check Prop Ownership");
+		AddMenuItem(menu, "delete", "Delete Prop");
+		AddMenuItem(menu, "clearall", "Clear All Props");
+		if (CheckCommandAccess(client, "sm_tfs_admin", ADMFLAG_GENERIC)) { //Checks if you have admin permissions, if so it adds a button for the admin menu
+			AddMenuItem(menu, "admin", "Admin Menu");
+		}
+		DisplayMenu(menu, client, 30);
+  	} else {
+		PrintToChat(client, "You may not use the TFS menu as a spectator!");
 	}
-	DisplayMenu(menu, client, 30);
 }
+
 
 public TFS_MainMenuHandler(Handle:menu, MenuAction:action, client, param2) { 
 //"client" used to be "param1", replacing it has aided greatly in readability.
 //param2 is an integer used in other functions to determine a "position" value, but a position of what exactly?.
-	if (action == MenuAction_End)
-	{
+	if (action == MenuAction_End) {
 		CloseHandle(menu);
 	} 
-	else if (action == MenuAction_Select) 
-	{
+	else if (action == MenuAction_Select) {
 		new String:item[64];
 		GetMenuItem(menu, param2, item, sizeof(item));
-		if (StrEqual(item, "props"))
-		{
+		if (StrEqual(item, "props")) {
 			TFS_ShowPropMenu(client);
 		}
-		else if (StrEqual(item, "manip"))
-		{
+		else if (StrEqual(item, "manip")) {
 			TFS_ManipMenu(client);
 		}
-		else if (StrEqual(item, "edit"))
-		{
+		else if (StrEqual(item, "edit")) {
 			ShowMenu_Edit(client);
 		}
-		else if (StrEqual(item, "whoowns"))
-		{
+		else if (StrEqual(item, "whoowns")) {
 			WhoOwns(client);
 		}
-		else if (StrEqual(item, "delete"))
-		{
+		else if (StrEqual(item, "delete")) {
 			DeleteAimProp(client);
 		}
-		else if (StrEqual(item, "clearall"))
-		{
+		else if (StrEqual(item, "clearall")) {
 			ShowMenu_Clear(client);
 		}
-		else if (StrEqual(item, "admin"))
-		{
+		else if (StrEqual(item, "admin")) {
 			TFS_ShowAdminMenu(client);
 		}
 	}
@@ -390,7 +388,7 @@ public TFS_PropMenuHandler(Handle:menu, MenuAction:action, client, param2) {
 	else if(action == MenuAction_Cancel) {
 		TFS_ShowMainMenu(client); }
 	else if (action == MenuAction_Select) {
-		new String:buf[64];
+		//new String:buf[64];
 		new msize = GetArraySize(g_PropMenus);
 		// Menu from config file
 		if (param2 <= msize) {
@@ -458,23 +456,19 @@ public TFS_CustomMenuHandler(Handle:menu, MenuAction:action, client, param2) {
 	} else if (action == MenuAction_Select) {
 		new String:itemval[512];
 		GetMenuItem(menu, param2, itemval, sizeof(itemval));
-		if (strlen(itemval) > 0)
-		{
-			if(!g_bInBuildZone[client])
-			{
+		if (strlen(itemval) > 0) {
+			if(!g_bInBuildZone[client]) {
 				PrintToChat(client, "You can't build here! Move into a building area!");
 				TFS_ShowPropMenu(client);
 				return;
 			}
 			new prop_limit_ = GetConVarInt(prop_limit);
-			if((g_iPropCount[client] >= prop_limit_))
-			{
+			if((g_iPropCount[client] >= prop_limit_)) {
 				PrintToChat(client, "You can't spawn any more props. Delete some to spawn more!");
 				TFS_ShowMainMenu(client);
 				return;
 			}
-			if(g_bIsClientSpec(client) == 1)
-			{
+			if(g_bIsClientSpec(client) == true) {
 				PrintToChat(client, "You cannot build in Spectator! Please join either RED or BLU!");
 				TFS_ShowMainMenu(client);
 				return;
@@ -526,14 +520,15 @@ public TFS_CustomMenuHandler(Handle:menu, MenuAction:action, client, param2) {
 			EmitSoundToClient(client, SOUND_SPAWN, _, _, _, _, _, 50);
 
 			//anti-stuck protection
-			for (new i=1; i <= MaxClients; i++)
-				if (IsClientInGame(i) && IsPlayerAlive(i))
-					if (IsStuckInEnt(i, ent))
-					{
+			for (new i=1; i <= MaxClients; i++) {
+				if (IsClientInGame(i) && IsPlayerAlive(i)) {
+					if (IsStuckInEnt(i, ent)) {
 						PrintToChat(client, "\x01You cannot build on \x04Players!");
 						DeleteProp(ent);
 						break;
 					}
+				}
+			}
 			TFS_ShowPropMenu(client);
 		}
 	} else if (action == MenuAction_Cancel) {
@@ -543,13 +538,11 @@ public TFS_CustomMenuHandler(Handle:menu, MenuAction:action, client, param2) {
 	}
 }
 
-public void CheckEntity1(int entity)
-{
+public void CheckEntity1(int entity) {
 	RequestFrame(CheckEntity2, entity);
 }
 
-public void CheckEntity2(int entity)
-{
+public void CheckEntity2(int entity) {
 	//if(IsValidEntity(entity) && !g_bInBuildZone[entity])
 	//	DeleteProp(entity);
 }
@@ -599,41 +592,39 @@ public bool:TraceEntityFilterPlayer(entity, contentsMask)
 
 //Manipulate Menu
 TFS_ManipMenu(client)
-{
+{	
 	new target = GetClientAimTarget(client, false);
 	if(!g_bInBuildZone[client]) {
-		PrintToChat(client, "You are outside of a building area, so may not manipulate this prop!");
+		PrintToChat(client, "You are outside of a building area, so may not manipulate props!");
 		TFS_ShowMainMenu(client);
 		return;
-	} else {
-		if(CanModifyProp(client, target)) {
-			//menu chunk
-			g_iSelectedProp[client] = target;
-			GetEntPropVector(g_iSelectedProp[client], Prop_Data, "m_angRotation", g_vecSelectedPropPrevAng[client]);
-			GetEntPropVector(g_iSelectedProp[client], Prop_Data, "m_vecOrigin", g_vecSelectedPropPrevPos[client]);
-			GetClientEyeAngles(client, g_vecLockedAng[client]);
-			SDKHook(client, SDKHook_PreThink, PropManip);
-			SetEntityMoveType(client, MOVETYPE_NONE);
-
-			//prevents unable to re-grab prop after grab. 
-			SetEntProp(target, Prop_Send, "m_nSolidType", 6);
-
-			//draw menu
-			new Handle:menu = CreateMenu(Menu_Manip);
-			SetMenuTitle(menu, "WASD Moves The Prop | Jump or Duck moves Up or Down | Alt-Fire Rotates");
-
-			AddMenuItem(menu, "1", "Save Your Changes");
-			AddMenuItem(menu, "2", "Discard Your Changes");
-
-			SetMenuExitButton(menu, false);
-			DisplayMenu(menu, client, 720);
-		}
+	} else if (!IsPlayerAlive(client)) { //Don't think this ended up doing anything in the end, but eh
+		PrintToChat(client, "You are dead, so may not manipulate props!");
+		TFS_ShowMainMenu(client);
+		return;
+	} else if (CanModifyProp(client, target)) {
+		//menu chunk
+		g_iSelectedProp[client] = target;
+		GetEntPropVector(g_iSelectedProp[client], Prop_Data, "m_angRotation", g_vecSelectedPropPrevAng[client]);
+		GetEntPropVector(g_iSelectedProp[client], Prop_Data, "m_vecOrigin", g_vecSelectedPropPrevPos[client]);
+		GetClientEyeAngles(client, g_vecLockedAng[client]);
+		SDKHook(client, SDKHook_PreThink, PropManip);
+		SetEntityMoveType(client, MOVETYPE_NONE);
+		//prevents unable to re-grab prop after grab. 
+		SetEntProp(target, Prop_Send, "m_nSolidType", 6);
+		//draw menu
+		new Handle:menu = CreateMenu(Menu_Manip);
+		SetMenuTitle(menu, "WASD Moves The Prop | Jump or Duck moves Up or Down | Alt-Fire Rotates");
+		AddMenuItem(menu, "1", "Save Your Changes");
+		AddMenuItem(menu, "2", "Discard Your Changes");
+		SetMenuExitButton(menu, false);
+		DisplayMenu(menu, client, 720);
 	}
 }
 
 //Manipulate Menu options
 public Menu_Manip(Handle:menu, MenuAction:action, client, option) {
-	if(action == MenuAction_Select) {//This is the user selection, not entirely sure how it works but hey
+	if(action == MenuAction_Select) {//I barely have a clue how this works, this might just be the most confusing part
 		for (new i=1; i <= MaxClients; i++) { //For loop that increments the value of i
 			if (IsClientInGame(i) && IsPlayerAlive(i)) { //If the client with a value of i is fully connected and alive
 				if (IsStuckInEnt(i, g_iSelectedProp[client])) { //Check if client i is stuck in the selected prop of the current client (That's you!)
@@ -641,14 +632,9 @@ public Menu_Manip(Handle:menu, MenuAction:action, client, option) {
 					TeleportEntity(g_iSelectedProp[client], g_vecSelectedPropPrevPos[client], g_vecSelectedPropPrevAng[client], NULL_VECTOR);
 					break;
 				}
-			}/* Attempt to stop the prop being placed outside of build zones, but this method deoesn't work
-			if (!g_bInBuildZone[g_iSelectedProp[client]]) { //I believe this only checks if users are in build areas
-				PrintToChat(client, "The prop cannot be moved outside of build areas!");
-				TeleportEntity(g_iSelectedProp[client], g_vecSelectedPropPrevPos[client], g_vecSelectedPropPrevAng[client], NULL_VECTOR);
-				break;
-			}*/
+			}
 		}
-		SDKUnhook(client, SDKHook_PreThink, PropManip); //Returns controls to the players after manipulating a prop
+		SDKUnhook(client, SDKHook_PreThink, PropManip); //I see now, this is what just leaves the prop in place
 		SetEntityMoveType(client, MOVETYPE_WALK);
 		EmitSoundToClient(client, SOUND_MANIPSAVE, _, _, _, _, _, 50);
 		TFS_ShowMainMenu(client);
@@ -657,10 +643,9 @@ public Menu_Manip(Handle:menu, MenuAction:action, client, option) {
 			TeleportEntity(g_iSelectedProp[client], g_vecSelectedPropPrevPos[client], g_vecSelectedPropPrevAng[client], NULL_VECTOR);
 			EmitSoundToClient(client, SOUND_MANIPDISCARD, _, _, _, _, _, 50);
 		}
-	}
-	else if(action == MenuAction_Cancel) {
-		TFS_ShowMainMenu(client);} 
-	else if(action == MenuAction_End) {
+	} else if(action == MenuAction_Cancel) {
+		TFS_ShowMainMenu(client);
+	} else if(action == MenuAction_End) {
 		CloseHandle(menu);
 	}
 }
@@ -682,50 +667,46 @@ public PropManip(client)
 	TE_SetupBeamPoints(pos, pPos, g_iBeamIndex, 0, 0, 0, 0.1, 4.0, 8.0, 0, 0.0, {236, 150, 55, 200}, 0);
 	TE_SendToAll(0.0);
 
+	if (!IsPlayerAlive(client)) { //It really just was this simple huh? Spent many hours on this, and all it turned out to be was placing it in the right place.
+		PrintToChat(client, "You died while manipulating a prop, changes have been discarded!");
+		SDKUnhook(client, SDKHook_PreThink, PropManip);
+		SetEntityMoveType(client, MOVETYPE_WALK);
+		EmitSoundToClient(client, SOUND_MANIPDISCARD, _, _, _, _, _, 50);
+		TFS_ShowMainMenu(client);
+	}
+
 	//up + down
-	if(btns & IN_JUMP)
-	{
+	if(btns & IN_JUMP) {
 		pPos[2] += 1.0;
-	}
-	else if(btns & IN_DUCK)
-	{
+	} else if(btns & IN_DUCK) {
 		pPos[2] -= 1.0;
-	}	
-	// left + right
-	if(btns & IN_MOVELEFT)
-	{
-		pPos[0] -= 1.0;
 	}
-	else if(btns & IN_MOVERIGHT)
-	{
+
+	// left + right
+	if(btns & IN_MOVELEFT) {
+		pPos[0] -= 1.0;
+	} else if(btns & IN_MOVERIGHT) {
 		pPos[0] += 1.0;
 	}
 	
 	// forward + backward
-	if(btns & IN_FORWARD)
-	{
+	if(btns & IN_FORWARD) {
 		pPos[1] += 1.0;
-	}
-	else if(btns & IN_BACK)
-	{
+	} else if(btns & IN_BACK) {
 		pPos[1] -= 1.0;
 	}
 	
 	//Rotation
-	if(btns & IN_ATTACK2)
-	{
-		for(new i=0; i<=2; i++)
-		{
+	if(btns & IN_ATTACK2) {
+		for(new i=0; i<=2; i++) {
 			new change = RoundToNearest(g_vecLockedAng[client][i] - ang[i]);
 			pAng[i] += float(change);
 		}
 		TeleportEntity(client, NULL_VECTOR, g_vecLockedAng[client], NULL_VECTOR);
-	}
-	else
-	{
+	} else {
 		GetClientEyeAngles(client, g_vecLockedAng[client]);
 	}
-	
+
 	//apply modifications
 	//if(CanPropBeHere(pPos))
 	TeleportEntity(g_iSelectedProp[client], pPos, pAng, NULL_VECTOR);
@@ -1276,10 +1257,12 @@ public Menu_zRotate(Handle:menu, MenuAction:action, client, option)
 		ShowMenu_ZRotate(client);
 		EmitSoundToClient(client, SOUND_EDIT, _, _, _, _, _, 120);
 	}
-	else if(action == MenuAction_Cancel)
+	else if(action == MenuAction_Cancel) {
 		ShowMenu_AdvRotate(client);
-	else if(action == MenuAction_End)
+	}
+	else if(action == MenuAction_End) {
 		CloseHandle(menu);
+	}
 }
 
 //////////////////
